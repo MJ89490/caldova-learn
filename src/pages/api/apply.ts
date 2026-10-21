@@ -8,6 +8,13 @@ import { applicationSchema, createApplication } from '../../lib/applications';
 // database; every other route stays prerendered.
 export const prerender = false;
 
+/**
+ * Handle a job application form submission.
+ *
+ * Validates the posted form data, confirms the referenced job still exists
+ * in the content collection, persists the application, and redirects the
+ * candidate to a result page.
+ */
 export const POST: APIRoute = async ({ request, redirect }) => {
     const form = await request.formData();
 
