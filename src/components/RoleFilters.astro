@@ -1,0 +1,199 @@
+---
+/**
+ * Accessible department/location toggle filters for the open roles grid.
+ *
+ * This component only renders the controls and markers; all filtering logic
+ * happens client-side in the inline script below, which re-uses the pure
+ * `filterJobs` helper from `src/lib/jobs.ts` against the role cards already
+ * rendered in the DOM. This keeps the rendered cards as the single source of
+ * truth and keeps the page fully static/prerenderable.
+ */
+interface Props {
+    departments: string[];
+    locations: string[];
+}
+
+const { departments, locations } = Astro.props;
+---
+
+<div class="mb-6 flex flex-col gap-4" data-testid="role-filters">
+    <div data-testid="department-filter">
+        <h3 class="text-sm font-medium text-slate-300 mb-2" id="department-filter-label">
+            Department
+        </h3>
+        <div
+            role="group"
+            aria-labelledby="department-filter-label"
+            class="flex flex-wrap gap-2"
+        >
+            {
+                departments.map((department) => (
+                    <button
+                        type="button"
+                        class="filter-button rounded-full border border-slate-600 px-3 py-1 text-xs font-medium text-slate-300 hover:border-blue-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-300 aria-pressed:border-blue-500/60"
+                        data-testid="department-filter-button"
+                        data-filter-type="department"
+                        data-value={department}
+                        aria-pressed="false"
+                    >
+                        {department}
+                    </button>
+                ))
+            }
+        </div>
+    </div>
+
+    <div data-testid="location-filter">
+        <h3 class="text-sm font-medium text-slate-300 mb-2" id="location-filter-label">
+            Location
+        </h3>
+        <div
+            role="group"
+            aria-labelledby="location-filter-label"
+            class="flex flex-wrap gap-2"
+        >
+            {
+                locations.map((location) => (
+                    <button
+                        type="button"
+                        class="filter-button rounded-full border border-slate-600 px-3 py-1 text-xs font-medium text-slate-300 hover:border-blue-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 aria-pressed:bg-blue-500/20 aria-pressed:text-blue-300 aria-pressed:border-blue-500/60"
+                        data-testid="location-filter-button"
+                        data-filter-type="location"
+                        data-value={location}
+                        aria-pressed="false"
+                    >
+                        {location}
+                    </button>
+                ))
+            }
+        </div>
+    </div>
+
+    <div>
+        <button
+            type="button"
+            class="rounded-md border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-blue-500/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            data-testid="filters-reset"
+        >
+            Reset filters
+        </button>
+    </div>
+</div>
+
+<script>
+    import { filterJobs } from '../lib/jobs';
+    import type { Job } from '../types/job';
+
+    const root = document.querySelector('[data-testid="role-filters"]');
+    const grid = document.querySelector('[data-testid="roles-grid"]');
+    const emptyState = document.querySelector('[data-testid="roles-empty-filtered"]');
+    if (!root || !grid) {
+        // No roles rendered (e.g. no job postings at all); nothing to wire up.
+    } else {
+        const filtersRoot = root;
+        const rolesGrid = grid;
+        const cards = Array.from(
+            rolesGrid.querySelectorAll<HTMLElement>('[data-testid="role-card"]'),
+        );
+
+        // Minimal Job-shaped records derived from the DOM so `filterJobs` can be
+        // reused as-is; only the fields it reads are needed.
+        const cardJobs: Job[] = cards.map((card) => ({
+            slug: card.dataset.jobId ?? '',
+            title: '',
+            department: card.dataset.department ?? '',
+            location: card.dataset.location ?? '',
+            type: 'Full-time',
+            remote: false,
+            postedDate: '',
+            summary: '',
+        }));
+
+        function readParamList(params: URLSearchParams, key: string): string[] {
+            return params.getAll(key);
+        }
+
+        const initialParams = new URLSearchParams(window.location.search);
+        const selected = {
+            department: new Set(readParamList(initialParams, 'department')),
+            location: new Set(readParamList(initialParams, 'location')),
+        };
+
+        function syncUrl(): void {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('department');
+            for (const value of selected.department) {
+                params.append('department', value);
+            }
+            params.delete('location');
+            for (const value of selected.location) {
+                params.append('location', value);
+            }
+            const query = params.toString();
+            const url = `${window.location.pathname}${query ? `?${query}` : ''}`;
+            window.history.replaceState(null, '', url);
+        }
+
+        function applyFilters(): void {
+            const matches = new Set(
+                filterJobs(cardJobs, {
+                    departments: Array.from(selected.department),
+                    locations: Array.from(selected.location),
+                }).map((job) => job.slug),
+            );
+
+            let visibleCount = 0;
+            for (const card of cards) {
+                const isMatch = matches.has(card.dataset.jobId ?? '');
+                card.classList.toggle('hidden', !isMatch);
+                if (isMatch) visibleCount += 1;
+            }
+
+            rolesGrid.classList.toggle('hidden', visibleCount === 0);
+            emptyState?.classList.toggle('hidden', visibleCount !== 0);
+        }
+
+        function updateButtonState(): void {
+            const buttons = filtersRoot.querySelectorAll<HTMLButtonElement>('.filter-button');
+            for (const button of buttons) {
+                const type = button.dataset.filterType as 'department' | 'location';
+                const value = button.dataset.value ?? '';
+                button.setAttribute('aria-pressed', String(selected[type].has(value)));
+            }
+        }
+
+        function render(): void {
+            updateButtonState();
+            applyFilters();
+            syncUrl();
+        }
+
+        filtersRoot.addEventListener('click', (event) => {
+            const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+                '.filter-button',
+            );
+            if (button) {
+                const type = button.dataset.filterType as 'department' | 'location';
+                const value = button.dataset.value ?? '';
+                if (selected[type].has(value)) {
+                    selected[type].delete(value);
+                } else {
+                    selected[type].add(value);
+                }
+                render();
+                return;
+            }
+
+            const resetButton = (event.target as HTMLElement).closest(
+                '[data-testid="filters-reset"]',
+            );
+            if (resetButton) {
+                selected.department.clear();
+                selected.location.clear();
+                render();
+            }
+        });
+
+        render();
+    }
+</script>

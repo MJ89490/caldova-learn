@@ -30,3 +30,44 @@ export function formatPostedDate(iso: string): string {
         timeZone: 'UTC',
     });
 }
+
+/** Return the distinct department values present in `jobs`, alphabetically sorted. */
+export function getDepartments(jobs: Job[]): string[] {
+    return [...new Set(jobs.map((job) => job.department))].sort((a, b) => a.localeCompare(b));
+}
+
+/** Return the distinct location values present in `jobs`, alphabetically sorted. */
+export function getLocations(jobs: Job[]): string[] {
+    return [...new Set(jobs.map((job) => job.location))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Selected filter values for narrowing a `Job[]` list.
+ *
+ * Within a category (e.g. `departments`), values are combined with OR, so
+ * selecting multiple departments matches jobs in any of them. Across
+ * categories, selections are combined with AND, so a job must satisfy both
+ * the department selection (if any) and the location selection (if any).
+ * An empty or omitted array for a category means "no filter applied" for
+ * that category.
+ */
+export interface JobFilters {
+    departments?: string[];
+    locations?: string[];
+}
+
+/**
+ * Return jobs matching the given `filters` (does not mutate input).
+ * See `JobFilters` for the AND-across/OR-within-category combination rules.
+ * Passing no filters (or empty arrays) returns all jobs, supporting resets.
+ */
+export function filterJobs(jobs: Job[], filters: JobFilters): Job[] {
+    const departments = filters.departments ?? [];
+    const locations = filters.locations ?? [];
+
+    return jobs.filter((job) => {
+        const matchesDepartment = departments.length === 0 || departments.includes(job.department);
+        const matchesLocation = locations.length === 0 || locations.includes(job.location);
+        return matchesDepartment && matchesLocation;
+    });
+}
